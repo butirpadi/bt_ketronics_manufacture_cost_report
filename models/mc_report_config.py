@@ -12,12 +12,17 @@ class MCReportConfig(models.Model):
     #     'account.account', string='Akun Bahan Baku')
     # component_account_id = fields.Many2one(
     #     'account.account', string="Akun Bahan Penolong")
-    manual_persediaan_material_account_id =  fields.Many2one(
+    pembelian_material_account_id = fields.Many2one(
+        string='Akun Pembelian Material',
+        comodel_name='account.account',
+        ondelete='restrict',
+    )
+    manual_persediaan_material_account_id = fields.Many2one(
         string='Akun Persediaan Material',
         comodel_name='account.account',
         ondelete='restrict',
     )
-    realtime_persediaan_material_account_id =  fields.Many2one(
+    realtime_persediaan_material_account_id = fields.Many2one(
         string='Akun Persediaan Material',
         comodel_name='account.account',
         ondelete='restrict',

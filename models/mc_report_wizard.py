@@ -296,10 +296,11 @@ class MCReportWizard(models.TransientModel):
 
         report_config = self.env.ref(
             'bt_ketronics_manufacture_cost_report.mc_report_config_default')
-        akun_persediaan = report_config.manual_persediaan_material_account_id
+        akun_persediaan = report_config.realtime_persediaan_material_account_id
+        akun_pembelian = report_config.pembelian_material_account_id
 
-        if report_config.property_valuation == 'real_time':
-            akun_persediaan = report_config.realtime_persediaan_material_account_id
+        # if report_config.property_valuation == 'real_time':
+        #     akun_persediaan = report_config.realtime_persediaan_material_account_id
 
         akun_persediaan_wip = report_config.persediaan_barang_dalam_proses_account_id
         akun_persediaan_jadi = report_config.persediaan_barang_jadi_account_id
@@ -310,10 +311,16 @@ class MCReportWizard(models.TransientModel):
         begin_mat = begin_mat.filtered(lambda x: x.move_id.state == 'posted')
         begining_mat_value = sum(begin_mat.mapped('balance'))
 
-        inc_mat = self.env['account.move.line'].search(
-            ['&', '&', ('account_id', '=', akun_persediaan.id), ('date', '>=', self.date_from), ('date', '<=', self.date_to)])
-        inc_mat = inc_mat.filtered(lambda x: x.move_id.state == 'posted')
-        inc_mat_value = sum(inc_mat.mapped('debit'))
+        if report_config.property_valuation == 'manual':
+            inc_mat = self.env['account.move.line'].search(
+                ['&', '&', ('account_id', '=', akun_pembelian.id), ('date', '>=', self.date_from), ('date', '<=', self.date_to)])
+            inc_mat = inc_mat.filtered(lambda x: x.move_id.state == 'posted')
+            inc_mat_value = sum(inc_mat.mapped('debit'))
+        else:
+            inc_mat = self.env['account.move.line'].search(
+                ['&', '&', ('account_id', '=', akun_persediaan.id), ('date', '>=', self.date_from), ('date', '<=', self.date_to)])
+            inc_mat = inc_mat.filtered(lambda x: x.move_id.state == 'posted')
+            inc_mat_value = sum(inc_mat.mapped('debit'))
 
         # get retur move
         payable_type = self.env.ref('account.data_account_type_payable')
@@ -323,12 +330,26 @@ class MCReportWizard(models.TransientModel):
             ['&', '&', '&', ('account_id', 'in', payable_accounts.ids), ('date', '>=', self.date_from), ('date', '<=', self.date_to), ('debit', '>', 0)])
         payable_move = payable_aml.mapped('move_id')
         payable_move = payable_move.filtered(
-            lambda mv: akun_persediaan.id in mv.line_ids.mapped('account_id').ids)
+            lambda mv: akun_pembelian.id in mv.line_ids.mapped('account_id').ids)
         payable_move = payable_move.filtered(lambda mv: mv.state == 'posted')
         fix_payable_aml = payable_move.mapped('line_ids')
         fix_payable_aml = fix_payable_aml.filtered(
-            lambda ln: ln.account_id.id == akun_persediaan.id and ln.credit > 0)
+            lambda ln: ln.account_id.id == akun_pembelian.id and ln.credit > 0)
         total_raw_out = sum(fix_payable_aml.mapped('credit'))
+        
+        # payable_type = self.env.ref('account.data_account_type_payable')
+        # payable_accounts = self.env['account.account'].search(
+        #     [('user_type_id', '=', payable_type.id)])
+        # payable_aml = self.env['account.move.line'].search(
+        #     ['&', '&', '&', ('account_id', 'in', payable_accounts.ids), ('date', '>=', self.date_from), ('date', '<=', self.date_to), ('debit', '>', 0)])
+        # payable_move = payable_aml.mapped('move_id')
+        # payable_move = payable_move.filtered(
+        #     lambda mv: akun_persediaan.id in mv.line_ids.mapped('account_id').ids)
+        # payable_move = payable_move.filtered(lambda mv: mv.state == 'posted')
+        # fix_payable_aml = payable_move.mapped('line_ids')
+        # fix_payable_aml = fix_payable_aml.filtered(
+        #     lambda ln: ln.account_id.id == akun_persediaan.id and ln.credit > 0)
+        # total_raw_out = sum(fix_payable_aml.mapped('credit'))
 
         ending_mat = self.env['account.move.line'].search(
             [('account_id', '=', akun_persediaan.id), ('date', '<=', self.date_to)])
