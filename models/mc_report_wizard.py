@@ -1,6 +1,7 @@
 from odoo import api, fields, models, _
 from pprint import pprint
 from datetime import *
+from odoo.exceptions import UserError
 
 
 class MCReportWizard(models.TransientModel):
@@ -100,7 +101,7 @@ class MCReportWizard(models.TransientModel):
     #     raw_mat_out = raw_mat_out.mapped(
     #         lambda x: (x.price_unit or x.product_id.standard_price) * x.product_uom_qty)
 
-    #     total_raw_out = sum(raw_mat_out)
+    #     total_raw_return = sum(raw_mat_out)
 
     #     # get ending
     #     prods = report_config.raw_material_product_ids
@@ -259,7 +260,7 @@ class MCReportWizard(models.TransientModel):
     #         'material': {
     #             'begining': begining_mat_value,
     #             'incoming': total_raw_inc,
-    #             'outgoing': total_raw_out,
+    #             'outgoing': total_raw_return,
     #             'consumed': total_consumed,
     #             'ending': ending_mat_value,
     #         },
@@ -278,8 +279,9 @@ class MCReportWizard(models.TransientModel):
 
     def get_report_data(self):
         begining_mat_value = 0
-        inc_mat_value = 0
-        total_raw_out = 0
+        purch_mat_value = 0
+        adjust_mat_value = 0
+        total_raw_return = 0
         total_consumed = 0
         ending_mat_value = 0
         ending_comp_value = 0
@@ -294,16 +296,22 @@ class MCReportWizard(models.TransientModel):
         total_goods = 0
         total_production_cost = 0
 
+        payable_type = self.env.ref('account.data_account_type_payable')
+        payable_accounts = self.env['account.account'].search(
+            [('user_type_id', '=', payable_type.id)])
+
         report_config = self.env.ref(
             'bt_ketronics_manufacture_cost_report.mc_report_config_default')
         akun_persediaan = report_config.realtime_persediaan_material_account_id
         akun_pembelian = report_config.pembelian_material_account_id
-
-        # if report_config.property_valuation == 'real_time':
-        #     akun_persediaan = report_config.realtime_persediaan_material_account_id
+        stock_input_akun = report_config.stock_input_account_id
 
         akun_persediaan_wip = report_config.persediaan_barang_dalam_proses_account_id
         akun_persediaan_jadi = report_config.persediaan_barang_jadi_account_id
+
+        stock_journal = report_config.stock_journal_id
+        purchase_journal = report_config.purchase_journal_id
+        adjustment_journal = report_config.adjustment_journal_id
 
         # get material value
         begin_mat = self.env['account.move.line'].search(
@@ -311,32 +319,122 @@ class MCReportWizard(models.TransientModel):
         begin_mat = begin_mat.filtered(lambda x: x.move_id.state == 'posted')
         begining_mat_value = sum(begin_mat.mapped('balance'))
 
+        # get purchased material
         if report_config.property_valuation == 'manual':
-            inc_mat = self.env['account.move.line'].search(
-                ['&', '&', ('account_id', '=', akun_pembelian.id), ('date', '>=', self.date_from), ('date', '<=', self.date_to)])
-            inc_mat = inc_mat.filtered(lambda x: x.move_id.state == 'posted')
-            inc_mat_value = sum(inc_mat.mapped('debit'))
+            purch_aml = self.env['account.move.line'].search(
+                ['&', '&', '&', '&',
+                    ('account_id', '=', akun_pembelian.id),
+                    ('date', '>=', self.date_from),
+                    ('date', '<=', self.date_to),
+                    ('debit', '>', 0),
+                    ('journal_id', '=', purchase_journal.id)])
+            purch_aml.filtered(lambda ml: ml.move_id.state == 'posted')
+
+            # purch_move = purch_aml.mapped('move_id')
+            # purch_move = purch_move.filtered(lambda mv: mv.journal_id.id = purchase_journal.id)
+            # purch_move = purch_move.filtered(
+            #     lambda mv: payable_type.id in mv.line_ids.mapped('account_id.user_type_id').ids)
+            # purch_move = purch_move.filtered(lambda mv: mv.state == 'posted')
+            # fix_inc_aml = purch_move.mapped('line_ids')
+            # fix_inc_aml = fix_inc_aml.filtered(
+            #     lambda ln: ln.account_id.id == akun_pembelian.id)
+
+            purch_mat_value = sum(purch_aml.mapped('debit'))
+
+            # inc_mat = self.env['account.move.line'].search(
+            #     ['&', '&', ('account_id', '=', akun_pembelian.id), ('date', '>=', self.date_from), ('date', '<=', self.date_to)])
+            # inc_mat = inc_mat.filtered(lambda x: x.move_id.state == 'posted')
+            # purch_mat_value = sum(inc_mat.mapped('debit'))
         else:
-            inc_mat = self.env['account.move.line'].search(
-                ['&', '&', ('account_id', '=', akun_persediaan.id), ('date', '>=', self.date_from), ('date', '<=', self.date_to)])
-            inc_mat = inc_mat.filtered(lambda x: x.move_id.state == 'posted')
-            inc_mat_value = sum(inc_mat.mapped('debit'))
+            # inc_mat = self.env['account.move.line'].search(
+            #     ['&', '&', ('account_id', '=', akun_persediaan.id), ('date', '>=', self.date_from), ('date', '<=', self.date_to)])
+            # inc_mat = inc_mat.filtered(lambda x: x.move_id.state == 'posted')
+            # purch_mat_value = sum(inc_mat.mapped('debit'))
+
+            purch_aml = self.env['account.move.line'].search(
+                ['&', '&', '&', 
+                ('account_id', '=', akun_persediaan.id), 
+                ('date', '>=', self.date_from), 
+                ('date', '<=', self.date_to), ('debit', '>', 0),
+                ('journal_id', '=', stock_journal.id),
+                ])
+            purch_aml.filtered(lambda ml: ml.move_id.state == 'posted')
+            # purch_move = purch_aml.mapped('move_id')
+            # purch_move = purch_move.filtered(
+            #     lambda mv: stock_input_akun.id in mv.line_ids.mapped('account_id').ids)
+            # purch_move = purch_move.filtered(lambda mv: mv.state == 'posted')
+            # fix_purch_aml = purch_move.mapped('line_ids')
+            # fix_purch_aml = fix_purch_aml.filtered(
+            #     lambda ln: ln.account_id.id == akun_persediaan.id and ln.debit > 0)
+            purch_mat_value = sum(purch_aml.mapped('debit'))
+
+        # get adjustment
+        if report_config.property_valuation == 'manual':
+            adjust_aml = self.env['account.move.line'].search(
+                ['&', '&',
+                 ('account_id', '=', akun_pembelian.id),
+                 ('date', '>=', self.date_from),
+                 ('date', '<=', self.date_to),
+                 ('journal_id', '=', adjustment_journal.id)
+                 ])
+            adjust_aml.filtered(lambda ml: ml.move_id.state == 'posted')
+            # adjust_move = adjust_aml.mapped('move_id')
+            # for pay_acc in payable_accounts:
+            #     adjust_move = adjust_move.filtered(
+            #         lambda mv: pay_acc.id not in mv.line_ids.mapped('account_id').ids)
+            # adjust_move = adjust_move.filtered(
+            #     lambda mv: akun_persediaan_wip.id not in mv.line_ids.mapped('account_id').ids)
+            # adjust_move = adjust_move.filtered(lambda mv: mv.state == 'posted')
+            # fix_adjust_aml = adjust_move.mapped('line_ids')
+            # fix_adjust_aml = fix_adjust_aml.filtered(
+                # lambda ln: ln.account_id.id == akun_pembelian.id)
+            adjust_mat_value = sum(adjust_aml.mapped('balance'))
+        else:
+            adjust_aml = self.env['account.move.line'].search(
+                ['&', '&', 
+                ('account_id', '=', akun_persediaan.id), 
+                ('date', '>=', self.date_from), 
+                ('date', '<=', self.date_to),
+                ('journal_id', '=', adjustment_journal.id)
+                ])
+            adjust_aml.filtered(lambda ml: ml.move_id.state == 'posted')
+            # adjust_move = adjust_aml.mapped('move_id')
+            # adjust_move = adjust_move.filtered(
+            #     lambda mv: stock_input_akun.id not in mv.line_ids.mapped('account_id').ids)
+            # adjust_move = adjust_move.filtered(
+            #     lambda mv: akun_persediaan_wip.id not in mv.line_ids.mapped('account_id').ids)
+            # adjust_move = adjust_move.filtered(lambda mv: mv.state == 'posted')
+            # fix_adjust_aml = adjust_move.mapped('line_ids')
+            # fix_adjust_aml = fix_adjust_aml.filtered(
+            #     lambda ln: ln.account_id.id == akun_persediaan.id)
+            adjust_mat_value = sum(adjust_aml.mapped('balance'))
+            
 
         # get retur move
-        payable_type = self.env.ref('account.data_account_type_payable')
-        payable_accounts = self.env['account.account'].search(
-            [('user_type_id', '=', payable_type.id)])
-        payable_aml = self.env['account.move.line'].search(
-            ['&', '&', '&', ('account_id', 'in', payable_accounts.ids), ('date', '>=', self.date_from), ('date', '<=', self.date_to), ('debit', '>', 0)])
-        payable_move = payable_aml.mapped('move_id')
-        payable_move = payable_move.filtered(
-            lambda mv: akun_pembelian.id in mv.line_ids.mapped('account_id').ids)
-        payable_move = payable_move.filtered(lambda mv: mv.state == 'posted')
-        fix_payable_aml = payable_move.mapped('line_ids')
-        fix_payable_aml = fix_payable_aml.filtered(
-            lambda ln: ln.account_id.id == akun_pembelian.id and ln.credit > 0)
-        total_raw_out = sum(fix_payable_aml.mapped('credit'))
-        
+        if report_config.property_valuation == 'manual':
+            payable_aml = self.env['account.move.line'].search(
+                ['&', '&', '&', ('account_id', 'in', payable_accounts.ids), ('date', '>=', self.date_from), ('date', '<=', self.date_to), ('debit', '>', 0)])
+            payable_move = payable_aml.mapped('move_id')
+            payable_move = payable_move.filtered(
+                lambda mv: akun_pembelian.id in mv.line_ids.mapped('account_id').ids)
+            payable_move = payable_move.filtered(
+                lambda mv: mv.state == 'posted')
+            fix_payable_aml = payable_move.mapped('line_ids')
+            fix_payable_aml = fix_payable_aml.filtered(
+                lambda ln: ln.account_id.id == akun_pembelian.id and ln.credit > 0)
+            total_raw_return = sum(fix_payable_aml.mapped('credit'))
+        else:
+            return_aml = self.env['account.move.line'].search(
+                ['&', '&', '&', ('account_id', '=', akun_persediaan.id), ('date', '>=', self.date_from), ('date', '<=', self.date_to), ('credit', '>', 0)])
+            return_move = return_aml.mapped('move_id')
+            return_move = return_move.filtered(
+                lambda mv: stock_input_akun.id in mv.line_ids.mapped('account_id').ids)
+            return_move = return_move.filtered(lambda mv: mv.state == 'posted')
+            fix_return_aml = return_move.mapped('line_ids')
+            fix_return_aml = fix_return_aml.filtered(
+                lambda ln: ln.account_id.id == akun_persediaan.id and ln.credit > 0)
+            total_raw_return = sum(fix_return_aml.mapped('credit'))
+
         # payable_type = self.env.ref('account.data_account_type_payable')
         # payable_accounts = self.env['account.account'].search(
         #     [('user_type_id', '=', payable_type.id)])
@@ -349,15 +447,15 @@ class MCReportWizard(models.TransientModel):
         # fix_payable_aml = payable_move.mapped('line_ids')
         # fix_payable_aml = fix_payable_aml.filtered(
         #     lambda ln: ln.account_id.id == akun_persediaan.id and ln.credit > 0)
-        # total_raw_out = sum(fix_payable_aml.mapped('credit'))
+        # total_raw_return = sum(fix_payable_aml.mapped('credit'))
 
         ending_mat = self.env['account.move.line'].search(
             [('account_id', '=', akun_persediaan.id), ('date', '<=', self.date_to)])
         ending_mat = ending_mat.filtered(lambda x: x.move_id.state == 'posted')
         ending_mat_value = sum(ending_mat.mapped('balance'))
 
-        total_mat_cost = begining_mat_value + \
-            inc_mat_value - total_raw_out - ending_mat_value
+        total_mat_cost = begining_mat_value + purch_mat_value + \
+            adjust_mat_value - total_raw_return - ending_mat_value
 
         # ----------------------------------------------------------------------------------------
         # get labor cost
@@ -459,12 +557,12 @@ class MCReportWizard(models.TransientModel):
 
         total_goods = begining_goods + total_production_cost - ending_goods
 
-
         report_data = {
             'material': {
                 'begining': begining_mat_value,
-                'incoming': inc_mat_value,
-                'outgoing': total_raw_out,
+                'purchase': purch_mat_value,
+                'adjust': adjust_mat_value,
+                'return': total_raw_return,
                 'ending': ending_mat_value,
                 'total': total_mat_cost,
             },
@@ -484,6 +582,7 @@ class MCReportWizard(models.TransientModel):
             'cogm': begining_goods + total_wip - ending_goods
         }
 
+        # raise UserError('Mohon maaf tidak bisa ..')
         return report_data
 
     def action_submit(self):

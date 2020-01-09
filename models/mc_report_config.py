@@ -8,10 +8,27 @@ class MCReportConfig(models.Model):
     name = fields.Char(string='Name', default="Manufacture Cost Report")
     property_valuation = fields.Selection([("manual", "Manual (Periodic)"), (
         "real_time", "Automatic (Perpetual)")], string='Inventory Valuation')
-    # raw_material_account_id = fields.Many2one(
-    #     'account.account', string='Akun Bahan Baku')
-    # component_account_id = fields.Many2one(
-    #     'account.account', string="Akun Bahan Penolong")
+    stock_journal_id = fields.Many2one(
+        string='Jurnal Persediaan',
+        comodel_name='account.journal',
+        ondelete='restrict',
+    )
+    purchase_journal_id = fields.Many2one(
+        string='Jurnal Pembelian',
+        comodel_name='account.journal',
+        ondelete='restrict',
+    )
+    adjustment_journal_id = fields.Many2one(
+        string='Jurnal Penyesuaian',
+        comodel_name='account.journal',
+        ondelete='restrict',
+    )
+
+    stock_input_account_id = fields.Many2one(
+        string='Stock Input Account',
+        comodel_name='account.account',
+        ondelete='restrict',
+    )
     pembelian_material_account_id = fields.Many2one(
         string='Akun Pembelian Material',
         comodel_name='account.account',

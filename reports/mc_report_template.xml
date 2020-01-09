@@ -71,7 +71,21 @@
                                                 Pembelian
                                             </td>
                                             <td class="text-right">
-                                                <t t-esc="'{0:,.2f}'.format(rData['material']['incoming'])" />
+                                                <t t-esc="'{0:,.2f}'.format(rData['material']['purchase'])" />
+                                            </td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                        </tr>
+                                        <tr>
+                                            <td></td>
+                                            <td></td>
+                                            <td>
+                                                Adjustment
+                                            </td>
+                                            <td class="text-right">
+                                                <t t-esc="'{0:,.2f}'.format(rData['material']['adjust'])" />
                                             </td>
                                             <td></td>
                                             <td></td>
@@ -86,7 +100,7 @@
                                             </td>
                                             <td class="text-right">
                                                 <span>(</span>
-                                                <t t-esc="'{0:,.2f}'.format(rData['material']['outgoing'])" />
+                                                <t t-esc="'{0:,.2f}'.format(rData['material']['return'])" />
                                                 <span>)</span>
                                             </td>
                                             <td></td>
@@ -118,8 +132,7 @@
                                             </td>
                                             <td class="total-row"></td>
                                             <td class="text-right">
-                                                <t t-set="total_bahan_baku" t-value="rData['material']['begining'] + rData['material']['incoming'] - rData['material']['outgoing'] - rData['material']['ending']" />
-                                                <t t-esc="'{0:,.2f}'.format(total_bahan_baku)" />
+                                                <t t-esc="'{0:,.2f}'.format(rData['material']['total'])" />
                                             </td>
                                             <td></td>
                                             <td></td>
@@ -236,7 +249,6 @@
                                             </td>
                                             <td class=" total-row"></td>
                                             <td class="text-right">
-                                                <t t-set="total_biaya_produksi" t-value="total_bahan_baku + total_labor + total_overhead" />
                                                 <t t-esc="'{0:,.2f}'.format(rData['total_production_cost'])" />
                                             </td>
                                             <td></td>
